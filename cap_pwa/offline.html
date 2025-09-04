@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CAP - Offline</title>
+    <script src="js/offline-storage.js"></script>
+    <link rel="icon" type="image/png" href="../global_assets/favicon.png">
+    
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f9fafb; margin: 0; min-height: 100vh; }
+        .bg-red-600 { background-color: #dc2626; }
+        .text-white { color: white; }
+        .shadow-lg { box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+        .px-4 { padding-left: 1rem; padding-right: 1rem; }
+        .py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+        .py-6 { padding-top: 1.5rem; padding-bottom: 1.5rem; }
+        .flex { display: flex; }
+        .items-center { align-items: center; }
+        .justify-between { justify-content: space-between; }
+        .space-x-3 > * + * { margin-left: 0.75rem; }
+        .h-8 { height: 2rem; }
+        .w-auto { width: auto; }
+        .text-xs { font-size: 0.75rem; }
+        .text-sm { font-size: 0.875rem; }
+        .opacity-90 { opacity: 0.9; }
+        .w-2 { width: 0.5rem; }
+        .h-2 { height: 0.5rem; }
+        .bg-red-400 { background-color: #f87171; }
+        .rounded-full { border-radius: 9999px; }
+        .mr-1 { margin-right: 0.25rem; }
+        .bg-red-700 { background-color: #b91c1c; }
+        .px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
+        .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+        .rounded { border-radius: 0.375rem; }
+        .bg-yellow-50 { background-color: #fefdf8; }
+        .border-l-4 { border-left-width: 4px; }
+        .border-yellow-400 { border-left-color: #f59e0b; }
+        .p-4 { padding: 1rem; }
+        .mb-6 { margin-bottom: 1.5rem; }
+        .rounded-r-lg { border-top-right-radius: 0.5rem; border-bottom-right-radius: 0.5rem; }
+        .flex-shrink-0 { flex-shrink: 0; }
+        .h-5 { height: 1.25rem; }
+        .w-5 { width: 1.25rem; }
+        .text-yellow-400 { color: #f59e0b; }
+        .ml-3 { margin-left: 0.75rem; }
+        .text-yellow-700 { color: #a16207; }
+        .font-medium { font-weight: 500; }
+        .font-bold { font-weight: 700; }
+        .text-xl { font-size: 1.25rem; }
+        .text-lg { font-size: 1.125rem; }
+        .bg-white { background-color: white; }
+        .shadow-sm { box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); }
+        .rounded-lg { border-radius: 0.5rem; }
+        .text-center { text-align: center; }
+        .py-8 { padding-top: 2rem; padding-bottom: 2rem; }
+        .text-gray-500 { color: #6b7280; }
+        .text-gray-600 { color: #4b5563; }
+        .text-gray-200 { color: #e5e7eb; }
+        .animate-spin { animation: spin 1s linear infinite; }
+        .border-b-2 { border-bottom-width: 2px; }
+        .border-red-600 { border-color: #dc2626; }
+        .mx-auto { margin-left: auto; margin-right: auto; }
+        .w-8 { width: 2rem; }
+        .h-8 { height: 2rem; }
+        .w-16 { width: 4rem; }
+        .h-16 { height: 4rem; }
+        .mb-4 { margin-bottom: 1rem; }
+        .grid { display: grid; }
+        .grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .gap-4 { gap: 1rem; }
+        .mt-6 { margin-top: 1.5rem; }
+        .text-2xl { font-size: 1.5rem; }
+        .text-red-600 { color: #dc2626; }
+        .text-green-600 { color: #059669; }
+        .text-yellow-600 { color: #d97706; }
+        .border { border-width: 1px; }
+        .border-gray-200 { border-color: #e5e7eb; }
+        .space-y-4 > * + * { margin-top: 1rem; }
+        .space-x-4 > * + * { margin-left: 1rem; }
+        
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .status-badge {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            border-radius: 9999px;
+        }
+        .status-zakazana { background-color: #dbeafe; color: #1e40af; }
+        .status-u_toku { background-color: #fef3c7; color: #92400e; }
+        .status-zavrsena { background-color: #dcfce7; color: #166534; }
+        .status-otkazana { background-color: #fee2e2; color: #991b1b; }
+        .btn-primary { 
+            background-color: #dc2626; color: white; padding: 0.5rem 1rem; 
+            border-radius: 0.375rem; font-weight: 500; border: none; cursor: pointer;
+        }
+        .btn-primary:hover { background-color: #b91c1c; }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Header -->
+    <header class="bg-red-600 text-white shadow-lg">
+        <div class="px-4 py-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center">
+                    <img src="../global_assets/cap_logo.png" alt="CAP Logo" class="h-8 w-auto">
+                </div>
+                <div class="flex items-center space-x-3">
+                    <!-- Offline Status Indicator -->
+                    <div id="offlineStatus" class="flex items-center text-xs opacity-90">
+                        <div class="w-2 h-2 bg-red-400 rounded-full mr-1"></div>
+                        <span>Offline Mode</span>
+                    </div>
+                    
+                    <span class="text-sm opacity-90" id="userName">Radnik</span>
+                    <button onclick="goOnlineMode()" class="text-sm bg-red-700 px-3 py-1 rounded hover:bg-red-800">
+                        Pokušaj online
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+    
+    <!-- Main Content -->
+    <main class="px-4 py-6">
+        <!-- Offline Notice -->
+        <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded-r-lg">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                    </svg>
+                </div>
+                <div class="ml-3">
+                    <p class="text-sm text-yellow-700">
+                        <strong>Offline režim:</strong> Prikazuju se lokalno sačuvani podaci. Sve akcije će biti sinhronizovane kada se vrati internet.
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Active Visit Alert Placeholder -->
+        <div id="activeVisitContainer"></div>
+        
+        <!-- Today's Schedule -->
+        <div class="card">
+            <h2 class="text-xl font-bold mb-4">Danas - <span id="currentDate"></span></h2>
+            
+            <div id="visitsContainer">
+                <div class="text-center py-8 text-gray-500">
+                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mx-auto mb-4"></div>
+                    <p>Učitavam lokalne podatke...</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Quick Stats -->
+        <div class="grid grid-cols-3 gap-4 mt-6">
+            <div class="card text-center">
+                <div class="text-2xl font-bold text-red-600" id="statTotal">-</div>
+                <div class="text-sm text-gray-600">Ukupno danas</div>
+            </div>
+            <div class="card text-center">
+                <div class="text-2xl font-bold text-green-600" id="statCompleted">-</div>
+                <div class="text-sm text-gray-600">Završene</div>
+            </div>
+            <div class="card text-center">
+                <div class="text-2xl font-bold text-yellow-600" id="statPending">-</div>
+                <div class="text-sm text-gray-600">Na čekanju</div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        let activeVisitTimerInterval = null;
+        let currentUser = null;
+
+        // Load offline data on page load
+        document.addEventListener('DOMContentLoaded', async function() {
+            console.log('CAP: Loading offline data...');
+            
+            // Set current date
+            const today = new Date();
+            document.getElementById('currentDate').textContent = formatDate(today);
+            
+            try {
+                // Try to get user info from localStorage
+                const storedUser = localStorage.getItem('cap_current_user');
+                if (storedUser) {
+                    currentUser = JSON.parse(storedUser);
+                    document.getElementById('userName').textContent = currentUser.name || 'Radnik';
+                    
+                    // Cleanup old visits for this user
+                    if (typeof OfflineStorage !== 'undefined') {
+                        try {
+                            const deletedCount = await OfflineStorage.cleanupVisits(currentUser.id, 7);
+                            if (deletedCount > 0) {
+                                console.log(`CAP: Cleaned up ${deletedCount} old/invalid visits`);
+                            }
+                        } catch (error) {
+                            console.log('CAP: Could not cleanup visits:', error);
+                        }
+                    }
+                }
+                
+                await loadOfflineData();
+            } catch (error) {
+                console.error('CAP: Error loading offline data:', error);
+                showErrorState();
+            }
+        });
+        
+        // Load data from IndexedDB
+        async function loadOfflineData() {
+            if (typeof OfflineStorage === 'undefined') {
+                showErrorState('Offline storage nije dostupan');
+                return;
+            }
+            
+            try {
+                const currentDate = new Date().toISOString().split('T')[0];
+                const userId = currentUser ? currentUser.id : null;
+                
+                if (!userId) {
+                    showErrorState('Korisnik nije definisan');
+                    return;
+                }
+                
+                // Get today's visits from IndexedDB
+                const visits = await OfflineStorage.getTodaysVisits(userId, currentDate);
+                console.log('CAP: Loaded offline visits:', visits);
+                
+                if (visits && visits.length > 0) {
+                    displayVisits(visits);
+                    updateStatistics(visits);
+                } else {
+                    showNoVisits();
+                }
+                
+            } catch (error) {
+                console.error('CAP: Error loading offline data:', error);
+                showErrorState('Greška pri učitavanju offline podataka');
+            }
+        }
+        
+        // Display visits in UI
+        function displayVisits(visits) {
+            const container = document.getElementById('visitsContainer');
+            
+            const visitCardsHTML = visits.map(visit => `
+                <div class="border border-gray-200 rounded-lg p-4 visit-card" data-visit-id="${visit.id}">
+                    <div class="flex items-start justify-between mb-3">
+                        <div class="flex-1">
+                            <h3 class="font-medium text-lg">${escapeHtml(visit.sticanik_ime || 'Štićenik')}</h3>
+                            <p class="text-gray-600">${escapeHtml(visit.sticanik_adresa || '')}</p>
+                            ${visit.sticanik_telefon ? `
+                                <p class="text-sm text-gray-500">
+                                    <a href="tel:${escapeHtml(visit.sticanik_telefon)}" 
+                                       class="text-blue-600 hover:text-blue-800">
+                                        ${escapeHtml(visit.sticanik_telefon)}
+                                    </a>
+                                </p>
+                            ` : ''}
+                        </div>
+                        <span class="status-badge ${getStatusClass(visit.status)}">
+                            ${getStatusText(visit.status)} ${visit.synced === false ? '(LOCAL)' : ''}
+                        </span>
+                    </div>
+                    
+                    <div class="flex items-center justify-between text-sm text-gray-600">
+                        <div>
+                            ${visit.vreme_pocetka ? `<span>Početak: ${visit.vreme_pocetka}</span>` : ''}
+                            ${visit.vreme_kraja ? `<span class="ml-4">Kraj: ${visit.vreme_kraja}</span>` : ''}
+                        </div>
+                        
+                        <div>
+                            <button onclick="showOfflineMessage()" 
+                                    class="btn-tertiary text-sm px-3 py-1 opacity-50" disabled>
+                                Offline
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            
+            container.innerHTML = visitCardsHTML;
+            
+            // Check for active visit
+            const activeVisit = visits.find(v => v.status === 'u_toku');
+            if (activeVisit) {
+                showActiveVisitAlert(activeVisit);
+            }
+        }
+        
+        // Show active visit alert
+        function showActiveVisitAlert(visit) {
+            const container = document.getElementById('activeVisitContainer');
+            
+            const alertHTML = `
+                <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6 rounded-r-lg shadow-md">
+                    <div class="flex items-center justify-between">
+                        <div class="flex-1">
+                            <div class="flex items-center mb-2">
+                                <div class="w-3 h-3 bg-orange-500 rounded-full mr-2"></div>
+                                <h3 class="font-medium text-blue-900">Poseta u toku (OFFLINE)</h3>
+                            </div>
+                            <p class="text-blue-700 font-medium">${escapeHtml(visit.sticanik_ime || 'Štićenik')}</p>
+                            <div class="flex items-center space-x-4 mt-2">
+                                <p class="text-sm text-blue-600">
+                                    Početo: ${visit.vreme_pocetka || 'N/A'}
+                                </p>
+                            </div>
+                        </div>
+                        <div>
+                            <button onclick="showOfflineMessage()" 
+                                    class="btn-primary shadow-md opacity-50" disabled>
+                                Završi posetu (offline)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            container.innerHTML = alertHTML;
+        }
+        
+        // Update statistics
+        function updateStatistics(visits) {
+            const total = visits.length;
+            const completed = visits.filter(v => v.status === 'zavrsena').length;
+            const pending = visits.filter(v => v.status === 'zakazana').length;
+            
+            document.getElementById('statTotal').textContent = total;
+            document.getElementById('statCompleted').textContent = completed;
+            document.getElementById('statPending').textContent = pending;
+        }
+        
+        // Show no visits message
+        function showNoVisits() {
+            const container = document.getElementById('visitsContainer');
+            container.innerHTML = `
+                <div class="text-center py-8 text-gray-500">
+                    <svg class="w-16 h-16 mx-auto mb-4" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/>
+                    </svg>
+                    <p>Nema lokalno sačuvanih poseta za danas</p>
+                    <p class="text-sm mt-2">Povezuje se na internet za najnovije podatke</p>
+                </div>
+            `;
+        }
+        
+        // Show error state
+        function showErrorState(message = 'Greška pri učitavanju podataka') {
+            const container = document.getElementById('visitsContainer');
+            container.innerHTML = `
+                <div class="text-center py-8 text-red-500">
+                    <svg class="w-16 h-16 mx-auto mb-4" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                    </svg>
+                    <p>${message}</p>
+                    <button onclick="location.reload()" class="btn-primary mt-4">
+                        Pokušaj ponovo
+                    </button>
+                </div>
+            `;
+        }
+        
+        // Show offline message
+        function showOfflineMessage() {
+            alert('Aplikacija je trenutno offline. Akcije će biti dostupne kada se vrati internet konekcija.');
+        }
+        
+        // Try to go online
+        function goOnlineMode() {
+            if (navigator.onLine) {
+                window.location.href = 'index.php';
+            } else {
+                alert('Nema internet konekcije. Pokušajte ponovo kada se vrati internet.');
+            }
+        }
+        
+        // Helper functions
+        function escapeHtml(text) {
+            if (!text) return '';
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+        }
+        
+        function getStatusClass(status) {
+            const classes = {
+                'zakazana': 'status-zakazana',
+                'u_toku': 'status-u_toku', 
+                'zavrsena': 'status-zavrsena',
+                'otkazana': 'status-otkazana'
+            };
+            return classes[status] || 'status-zakazana';
+        }
+        
+        function getStatusText(status) {
+            const texts = {
+                'zakazana': 'Zakazana',
+                'u_toku': 'U toku',
+                'zavrsena': 'Završena',
+                'otkazana': 'Otkazana'
+            };
+            return texts[status] || 'Nepoznato';
+        }
+        
+        function formatDate(date) {
+            const options = { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            };
+            return date.toLocaleDateString('sr-RS', options);
+        }
+        
+        // Check for online status periodically and redirect if online
+        setInterval(() => {
+            if (navigator.onLine) {
+                const offlineStatus = document.getElementById('offlineStatus');
+                offlineStatus.innerHTML = `
+                    <div class="w-2 h-2 bg-green-400 rounded-full mr-1 animate-pulse"></div>
+                    <span>Online - redirecting...</span>
+                `;
+                
+                // Redirect to main app after 2 seconds
+                setTimeout(() => {
+                    window.location.href = 'index.php';
+                }, 2000);
+            }
+        }, 5000);
+    </script>
+</body>
+</html>
