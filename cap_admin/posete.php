@@ -63,7 +63,7 @@ if ($_POST) {
             // Generate visits based on frequency for each sticanik
             $sticenike = $db->fetchAll("
                 SELECT s.id, s.ime_prezime, uo.dani_nedelje, 
-                       GROUP_CONCAT(ks.korisnik_id) as assigned_users
+                       GROUP_CONCAT(ks.korisnik_id, ',') as assigned_users
                 FROM sticenike s
                 LEFT JOIN ucestalost_odlaska uo ON s.ucestalost_odlaska_id = uo.id
                 LEFT JOIN korisnik_sticenike ks ON s.id = ks.sticanik_id

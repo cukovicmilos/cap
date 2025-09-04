@@ -161,20 +161,45 @@ if ($_POST) {
     }
 }
 
-$sticenike = $db->fetchAll("
-    SELECT s.*, ni.naziv as nivo_invaliditeta, uo.naziv as ucestalost_odlaska,
-           GROUP_CONCAT(u.naziv SEPARATOR ', ') as usluge_names,
-           GROUP_CONCAT(DISTINCT us.ime_prezime SEPARATOR ', ') as dodeljeni_radnici
-    FROM sticenike s
-    LEFT JOIN nivoi_invaliditeta ni ON s.nivo_invaliditeta_id = ni.id
-    LEFT JOIN ucestalost_odlaska uo ON s.ucestalost_odlaska_id = uo.id
-    LEFT JOIN sticanik_usluge su ON s.id = su.sticanik_id
-    LEFT JOIN usluge u ON su.usluga_id = u.id
-    LEFT JOIN korisnik_sticenike ks ON s.id = ks.sticanik_id
-    LEFT JOIN users us ON ks.korisnik_id = us.id
-    GROUP BY s.id
-    ORDER BY s.ime_prezime
-");
+try {
+    // Prvo pokušaj osnovni query
+    $sticenike = $db->fetchAll("
+        SELECT s.*, ni.naziv as nivo_invaliditeta, uo.naziv as ucestalost_odlaska
+        FROM sticenike s
+        LEFT JOIN nivoi_invaliditeta ni ON s.nivo_invaliditeta_id = ni.id
+        LEFT JOIN ucestalost_odlaska uo ON s.ucestalost_odlaska_id = uo.id
+        ORDER BY s.ime_prezime
+    ");
+    
+    // Dodaj usluge i korisnike naknadno
+    if ($sticenike) {
+        for ($i = 0; $i < count($sticenike); $i++) {
+            $usluge = $db->fetchAll("
+                SELECT u.naziv 
+                FROM sticanik_usluge su 
+                JOIN usluge u ON su.usluga_id = u.id 
+                WHERE su.sticanik_id = ?
+            ", [$sticenike[$i]['id']]);
+            $sticenike[$i]['usluge_names'] = implode(', ', array_column($usluge, 'naziv')) ?: 'Nema usluga';
+            
+            $korisnici = $db->fetchAll("
+                SELECT DISTINCT us.ime_prezime 
+                FROM korisnik_sticenike ks 
+                JOIN users us ON ks.korisnik_id = us.id 
+                WHERE ks.sticanik_id = ?
+            ", [$sticenike[$i]['id']]);
+            $sticenike[$i]['dodeljeni_radnici'] = implode(', ', array_column($korisnici, 'ime_prezime')) ?: 'Nije dodeljen';
+        }
+    }
+    
+    if (!$sticenike) {
+        error_log("Sticenike query returned empty result");
+        $sticenike = [];
+    }
+} catch (Exception $e) {
+    error_log("Error fetching sticenike: " . $e->getMessage());
+    $sticenike = [];
+}
 
 $usluge = $db->fetchAll("SELECT * FROM usluge ORDER BY naziv");
 $nivoi_invaliditeta = $db->fetchAll("SELECT * FROM nivoi_invaliditeta ORDER BY naziv");

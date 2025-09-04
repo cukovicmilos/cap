@@ -5,10 +5,16 @@ class Database {
     
     private function __construct() {
         try {
+            // Ensure directory exists
+            $dbDir = dirname(DB_PATH);
+            if (!is_dir($dbDir)) {
+                mkdir($dbDir, 0755, true);
+            }
+            
             $this->connection = new PDO(
-                "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8",
-                DB_USER,
-                DB_PASS,
+                "sqlite:" . DB_PATH,
+                null,
+                null,
                 [
                     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC

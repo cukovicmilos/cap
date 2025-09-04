@@ -1,9 +1,6 @@
 <?php
-// Database configuration
-define('DB_HOST', '127.0.0.1:8889');
-define('DB_USER', 'root');
-define('DB_PASS', 'root');
-define('DB_NAME', 'cap_db');
+// Database configuration (SQLite)
+define('DB_PATH', '/Users/' . get_current_user() . '/Dropbox/work/studio present/no_code/cap/cap_db.sqlite');
 
 // Global settings
 define('SITE_URL', 'http://127.0.0.1:8888/cap/');
