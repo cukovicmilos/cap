@@ -1,8 +1,25 @@
 <?php
-require_once '../../cap_admin/includes/config.php';
-require_once '../../cap_admin/includes/database.php';
-require_once '../../cap_admin/includes/auth.php';
-require_once '../../cap_admin/includes/functions.php';
+// Enable error reporting for debugging
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
+// Log start
+error_log("CAP finish_visit.php: Request started");
+
+try {
+    require_once '../../cap_admin/includes/config.php';
+    require_once '../../cap_admin/includes/database.php';
+    require_once '../../cap_admin/includes/auth.php';
+    require_once '../../cap_admin/includes/functions.php';
+    
+    error_log("CAP finish_visit.php: All includes loaded successfully");
+} catch (Exception $e) {
+    error_log("CAP finish_visit.php: Include error - " . $e->getMessage());
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Server configuration error: ' . $e->getMessage()]);
+    exit;
+}
 
 header('Content-Type: application/json');
 
@@ -14,36 +31,46 @@ header('Access-Control-Allow-Headers: Content-Type');
 $auth = new Auth();
 
 if (!$auth->isLoggedIn()) {
+    error_log("CAP finish_visit.php: User not authenticated");
     http_response_code(401);
     echo json_encode(['success' => false, 'message' => 'Unauthorized']);
     exit;
 }
 
 $currentUser = $auth->getCurrentUser();
+error_log("CAP finish_visit.php: User authenticated - ID: " . $currentUser['id'] . ", Type: " . $currentUser['type']);
 
 if ($currentUser['type'] === 'upravitelj') {
+    error_log("CAP finish_visit.php: Access denied for upravitelj");
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Access denied']);
     exit;
 }
 
 $input = json_decode(file_get_contents('php://input'), true);
+error_log("CAP finish_visit.php: Input data: " . json_encode($input));
+
 $posetaId = (int)($input['poseta_id'] ?? 0);
 $selectedUsluge = $input['usluge'] ?? [];
 $napomene = trim($input['napomene'] ?? '');
 
 if (!$posetaId) {
+    error_log("CAP finish_visit.php: Missing poseta_id");
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => 'Missing poseta_id']);
     exit;
 }
 
+error_log("CAP finish_visit.php: Processing visit ID: " . $posetaId . " with services: " . json_encode($selectedUsluge));
+
 $db = Database::getInstance();
 
 try {
+    error_log("CAP finish_visit.php: Starting database transaction");
     $db->getConnection()->beginTransaction();
     
     // Verify this visit belongs to current user and is active
+    error_log("CAP finish_visit.php: Checking visit for user " . $currentUser['id'] . " with status 'u_toku'");
     $poseta = $db->fetchOne("
         SELECT p.*, s.ime_prezime as sticanik_ime 
         FROM posete p
@@ -52,12 +79,16 @@ try {
     ", [$posetaId, $currentUser['id']]);
     
     if (!$poseta) {
+        error_log("CAP finish_visit.php: Visit not found or not active for ID: " . $posetaId);
+        $db->getConnection()->rollback();
         echo json_encode([
             'success' => false, 
             'message' => 'Poseta nije pronađena ili nije aktivna.'
         ]);
         exit;
     }
+    
+    error_log("CAP finish_visit.php: Found active visit for sticenik: " . $poseta['sticanik_ime']);
     
     // Calculate duration
     $startTime = new DateTime($poseta['datum_posete'] . ' ' . $poseta['vreme_pocetka']);

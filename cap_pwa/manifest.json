@@ -1,8 +1,8 @@
 {
-  "name": "Caritas Assistant Porta",
+  "name": "Caritas Assistant Portal",
   "short_name": "CAP",
-  "description": "PWA aplikacija za Caritas asistente i volontere",
-  "start_url": "/cap/cap_pwa/index.php",
+  "description": "PWA aplikacija za Caritas asistente i volontere v1.4.2",
+  "start_url": "/cap/cap_pwa/index.php?v=1.4.2",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#E24135",

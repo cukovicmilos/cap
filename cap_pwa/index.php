@@ -1,10 +1,8 @@
 <?php
-// Prevent caching when online for fresh data
-if (isset($_GET['_refresh'])) {
-    header("Cache-Control: no-cache, no-store, must-revalidate");
-    header("Pragma: no-cache");
-    header("Expires: 0");
-}
+// Always prevent caching for fresh data
+header("Cache-Control: no-cache, no-store, must-revalidate");
+header("Pragma: no-cache");
+header("Expires: 0");
 
 require_once '../cap_admin/includes/config.php';
 require_once '../cap_admin/includes/database.php';
@@ -72,6 +70,7 @@ foreach ($posete as $poseta) {
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <!-- PWA VERSION: OFFLINE-FIXED-<?php echo time(); ?> -->
+    <!-- DEBUG: FINAL-FIXES-APPLIED-v1.4.2-FORCE-REFRESH -->
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="-1">
     <style>
@@ -142,6 +141,15 @@ foreach ($posete as $poseta) {
                         <span id="offlineText">Offline</span>
                     </div>
                     
+                    <!-- Sync Offline Data Button -->
+                    <button onclick="syncOfflineData()" id="syncOfflineBtn" 
+                            class="text-xs bg-red-700 px-2 py-1 rounded hover:bg-red-800 transition-colors"
+                            title="Sinhronizuj offline podatke">
+                        <svg class="w-3 h-3 inline mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
+                        </svg>
+                        Sync
+                    </button>
                     
                     <span class="text-sm opacity-90"><?php echo htmlspecialchars($currentUser['name']); ?></span>
                     <a href="logout.php" class="text-sm bg-red-700 px-3 py-1 rounded hover:bg-red-800">
@@ -286,6 +294,22 @@ foreach ($posete as $poseta) {
     </main>
 
     <script>
+        // console.log('CAP: Page loaded with v1.4.2 - <?php echo time(); ?>');
+        
+        // Force reload if old version detected in cache
+        const expectedVersion = 'v1.4.2-FORCE-REFRESH';
+        const currentTime = <?php echo time(); ?>;
+        const storedTime = localStorage.getItem('cap_last_reload');
+        
+        // Disabled auto-reload to prevent interrupting sync
+        // if (!storedTime || (currentTime - storedTime > 5)) { // 5 seconds cooldown
+        //     localStorage.setItem('cap_last_reload', currentTime);
+        //     console.log('CAP: Forcing page reload for fresh version');
+        //     setTimeout(() => {
+        //         window.location.reload(true); // Hard reload
+        //     }, 100);
+        // }
+        
         let activeVisitTimerInterval = null;
 
         // Toast notification system
@@ -476,6 +500,10 @@ foreach ($posete as $poseta) {
                     console.error('CAP: Offline storage error:', offlineError);
                     console.error('CAP: OfflineStorage available?', typeof OfflineStorage);
                     showToast(`Greška pri čuvanju offline podataka: ${offlineError.message}`, 'error');
+                    
+                    // Update UI even if storage fails - user should see active visit
+                    console.log('CAP: Updating UI despite storage error');
+                    updateUIForActiveVisit(posetaId, visitData);
                 } finally {
                     // Clean up active request tracking  
                     activeRequests.delete(`start_${posetaId}`);
@@ -495,6 +523,7 @@ foreach ($posete as $poseta) {
                     headers: {
                         'Content-Type': 'application/json',
                     },
+                    credentials: 'same-origin',
                     body: JSON.stringify({ poseta_id: posetaId })
                 });
                 
@@ -547,6 +576,10 @@ foreach ($posete as $poseta) {
                     } catch (offlineError) {
                         console.error('Offline storage error:', offlineError);
                         showToast('Greška pri čuvanju offline podataka.', 'error');
+                        
+                        // Update UI even if storage fails - user should see active visit
+                        console.log('CAP: Updating UI despite storage error (fallback)');
+                        updateUIForActiveVisit(posetaId, visitData);
                     }
                 } else {
                     showToast('Greška prilikom pokretanja posete. Pokušajte ponovo.', 'error');
@@ -577,12 +610,15 @@ foreach ($posete as $poseta) {
             
             // Check if offline first
             if (!navigator.onLine) {
+                // Loading services from local storage
                 try {
                     const localServices = await OfflineStorage.getServices();
                     if (localServices && localServices.length > 0) {
+                        // Found services in local storage
                         showFinishVisitModal(posetaId, localServices);
                         showToast('Učitane su lokalno sačuvane usluge (offline).', 'warning');
                     } else {
+                        // No services found in local storage
                         // Show modal without services
                         showFinishVisitModal(posetaId, []);
                         showToast('Nema dostupnih usluga offline. Možete završiti posetu bez izbora usluga.', 'warning');
@@ -601,7 +637,9 @@ foreach ($posete as $poseta) {
             
             // Online case - get available services for the modal
             try {
-                const response = await fetch('api/get_services.php');
+                const response = await fetch('api/get_services.php', {
+                    credentials: 'same-origin'
+                });
                 const servicesData = await response.json();
                 
                 if (!servicesData.success) {
@@ -620,7 +658,7 @@ foreach ($posete as $poseta) {
                 console.error('Error loading services:', error);
                 
                 // Handle offline case - load services from local storage
-                if (!navigator.onLine || error.message.includes('Failed to fetch')) {
+                if (error.message.includes('Failed to fetch')) {
                     try {
                         const localServices = await OfflineStorage.getServices();
                         if (localServices && localServices.length > 0) {
@@ -722,13 +760,23 @@ foreach ($posete as $poseta) {
             submitButton.innerHTML = '<div class="spinner"></div> Završavam...';
             
             try {
+                // Check Service Worker status
+                if (!navigator.onLine) {
+                    console.log('CAP: Offline - checking Service Worker status');
+                    if ('serviceWorker' in navigator) {
+                        console.log('CAP: Service Worker available, controller:', navigator.serviceWorker.controller);
+                    } else {
+                        console.log('CAP: Service Worker not available');
+                    }
+                }
                 
-                // Send AJAX request
+                // Send AJAX request with credentials
                 const response = await fetch('api/finish_visit.php', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
+                    credentials: 'same-origin', // Include cookies for session
                     body: JSON.stringify({
                         poseta_id: posetaId,
                         usluge: selectedServices,
@@ -739,13 +787,72 @@ foreach ($posete as $poseta) {
                 const result = await response.json();
                 
                 if (result.success) {
-                    showToast(result.message, 'success');
-                    closeFinishVisitModal();
-                    
-                    // Reload page to show updated state
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 1000);
+                    // Check if this is an offline response
+                    if (result.offline === true) {
+                        console.log('CAP: Received offline response from Service Worker');
+                        
+                        // Store offline action via unified sync system
+                        await OfflineStorage.addToSyncQueue({
+                            url: 'api/finish_visit.php',
+                            method: 'POST',
+                            data: {
+                                poseta_id: posetaId,
+                                usluge: selectedServices,
+                                napomene: napomene
+                            },
+                            action_type: 'finish_visit'
+                        });
+                        
+                        // Update visit data locally
+                        const finishedVisitData = {
+                            id: posetaId,
+                            status: 'zavrsena',
+                            vreme_kraja: new Date().toTimeString().split(' ')[0].substring(0,5),
+                            usluge: selectedServices,
+                            napomene: napomene,
+                            user_id: <?php echo $currentUser['id']; ?>,
+                            timestamp: Date.now(),
+                            synced: false
+                        };
+                        
+                        await OfflineStorage.storeVisit(finishedVisitData);
+                        
+                        showToast('Poseta je završena offline. Podaci će biti sinhronizovani kada se vrati internet.', 'warning');
+                        closeFinishVisitModal();
+                        
+                        // Remove active visit alert and stop timer
+                        const activeAlert = document.getElementById('activeVisitAlert');
+                        if (activeAlert) {
+                            activeAlert.remove();
+                        }
+                        stopActiveVisitTimer();
+                        
+                        // Update visit card in UI
+                        const visitCards = document.querySelectorAll('.visit-card');
+                        visitCards.forEach(card => {
+                            const button = card.querySelector(`button[onclick*="zavrsiPosetu(${posetaId})"]`);
+                            if (button) {
+                                // Remove the button
+                                button.remove();
+                                
+                                // Update status badge
+                                const statusBadge = card.querySelector('.status-badge');
+                                if (statusBadge) {
+                                    statusBadge.textContent = 'Završena (OFFLINE)';
+                                    statusBadge.className = 'status-badge status-zavrsena';
+                                }
+                            }
+                        });
+                    } else {
+                        // Normal online success
+                        showToast(result.message, 'success');
+                        closeFinishVisitModal(true); // Skip timer restart since visit is finished
+                        
+                        // Reload page to show updated state
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1000);
+                    }
                 } else {
                     showToast(result.message, 'error');
                 }
@@ -785,8 +892,29 @@ foreach ($posete as $poseta) {
                         showToast('Poseta je završena offline. Podaci će biti sinhronizovani kada se vrati internet.', 'warning');
                         closeFinishVisitModal();
                         
-                        // Update UI optimistically without reload
-                        updateUIForFinishedVisit(posetaId);
+                        // Remove active visit alert and stop timer
+                        const activeAlert = document.getElementById('activeVisitAlert');
+                        if (activeAlert) {
+                            activeAlert.remove();
+                        }
+                        stopActiveVisitTimer();
+                        
+                        // Update visit card in UI
+                        const visitCards = document.querySelectorAll('.visit-card');
+                        visitCards.forEach(card => {
+                            const button = card.querySelector(`button[onclick*="zavrsiPosetu(${posetaId})"]`);
+                            if (button) {
+                                // Remove the button
+                                button.remove();
+                                
+                                // Update status badge
+                                const statusBadge = card.querySelector('.status-badge');
+                                if (statusBadge) {
+                                    statusBadge.textContent = 'Završena (OFFLINE)';
+                                    statusBadge.className = 'status-badge status-zavrsena';
+                                }
+                            }
+                        });
                         
                     } catch (offlineError) {
                         console.error('Offline storage error:', offlineError);
@@ -802,18 +930,20 @@ foreach ($posete as $poseta) {
             }
         }
 
-        function closeFinishVisitModal() {
+        function closeFinishVisitModal(skipTimerRestart = false) {
             const modal = document.getElementById('finishVisitModal');
             if (modal) {
                 modal.remove();
             }
-            // Restart timer if visit is still active
-            <?php if ($aktivnaPoseta): ?>
-            const startTime = <?php echo $startTimestamp ?? 'null'; ?>;
-            if (startTime) {
-                startActiveVisitTimer(startTime);
+            // Only restart timer if not explicitly skipped (e.g., when visit is finished)
+            if (!skipTimerRestart) {
+                <?php if ($aktivnaPoseta): ?>
+                const startTime = <?php echo $startTimestamp ?? 'null'; ?>;
+                if (startTime) {
+                    startActiveVisitTimer(startTime);
+                }
+                <?php endif; ?>
             }
-            <?php endif; ?>
         }
 
         // Cleanup timer on page unload
@@ -825,7 +955,9 @@ foreach ($posete as $poseta) {
         async function preloadServices() {
             if (navigator.onLine) {
                 try {
-                    const response = await fetch('api/get_services.php');
+                    const response = await fetch('api/get_services.php', {
+                    credentials: 'same-origin'
+                });
                     const servicesData = await response.json();
                     
                     if (servicesData.success && typeof OfflineStorage !== 'undefined') {
@@ -867,7 +999,7 @@ foreach ($posete as $poseta) {
         // ===== PWA & OFFLINE FUNCTIONALITY =====
         
         let isOnline = navigator.onLine;
-        let reallyOnline = false; // Real connectivity status
+        let reallyOnline = navigator.onLine; // Start with navigator.onLine value
         let serviceWorkerRegistration = null;
         let autoSyncInterval = null;
         let connectivityTestInterval = null;
@@ -876,38 +1008,105 @@ foreach ($posete as $poseta) {
         
         // Register Service Worker
         if ('serviceWorker' in navigator) {
-            window.addEventListener('load', async () => {
+            // Service Worker support detected
+            
+            // Function to register SW
+            async function registerServiceWorker() {
+                // Starting Service Worker registration
                 try {
-                    serviceWorkerRegistration = await navigator.serviceWorker.register('./sw.js');
-                    console.log('CAP: Service Worker registered successfully');
+                    // Clear old service worker caches only (not IndexedDB or localStorage)
+                    if ('caches' in window) {
+                        const cacheNames = await caches.keys();
+                        // Only delete caches that start with 'cap-' to preserve other data
+                        const oldCaches = cacheNames.filter(name => name.startsWith('cap-'));
+                        await Promise.all(oldCaches.map(name => caches.delete(name)));
+                        // Old service worker caches cleared
+                    }
+                    
+                    // Force unregister old SW first
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    // Found existing Service Workers
+                    for (let registration of registrations) {
+                        // Unregistering old SW
+                        await registration.unregister();
+                    }
+                    // Old Service Workers unregistered
+                    
+                    // Wait a bit for cleanup
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    
+                    // Clear HTTP cache via programmatic method
+                    if ('serviceWorker' in navigator && 'caches' in window) {
+                        // Clear all HTTP caches including browser cache
+                        try {
+                            await caches.delete('v1');
+                            await caches.delete('v2'); 
+                            await caches.delete('v3');
+                            // Clear any potential service worker caches
+                            const keys = await caches.keys();
+                            for (const key of keys) {
+                                await caches.delete(key);
+                            }
+                        } catch (e) {}
+                    }
+                    
+                    const swTimestamp = Date.now();
+                    // Registering SW with timestamp
+                    
+                    try {
+                        serviceWorkerRegistration = await navigator.serviceWorker.register('./sw.js?v=' + swTimestamp, {
+                            updateViaCache: 'none' // Force no cache for SW
+                        });
+                        // SW registration object created
+                    } catch (regError) {
+                        console.error('CAP: SW registration error:', regError);
+                        throw regError;
+                    }
+                    
+                    // Force update check immediately
+                    await serviceWorkerRegistration.update();
+                    // Service Worker registered and updated successfully
+                    
+                    // Wait for Service Worker to become active
+                    if (!navigator.serviceWorker.controller) {
+                        // Waiting for SW to be ready
+                        await navigator.serviceWorker.ready;
+                        // Service Worker is ready
+                    } else {
+                        // Service Worker controller already active
+                    }
                     
                     // Listen for SW messages
                     navigator.serviceWorker.addEventListener('message', handleSWMessage);
+                    // SW message listener added
                     
                     // Cleanup old visits first, then preload services
                     setTimeout(async () => {
+                        // Starting cleanup and preload
                         await cleanupOldVisits();
                         await preloadServices();
+                        // Cleanup and preload complete
                     }, 1000);
                     
                     // Test real connectivity before starting sync
-                    await testRealConnectivity().then(online => {
-                        if (online) {
-                            console.log('CAP: Really online, starting auto-sync');
-                            reallyOnline = true;
-                            startAutoSync();
-                        } else {
-                            console.log('CAP: Really offline, skipping auto-sync - will load from IndexedDB');
-                            reallyOnline = false;
-                            // Force redirect to offline.html if we loaded index.php while offline
-                            if (window.location.pathname.includes('index.php')) {
-                                console.log('CAP: Redirecting to offline.html for better offline experience');
-                                setTimeout(() => {
-                                    window.location.href = 'offline.html';
-                                }, 1000);
-                            }
+                    // Testing real connectivity
+                    const isReallyOnline = await testRealConnectivity();
+                    reallyOnline = isReallyOnline;
+                    // Connectivity test complete
+                    
+                    if (isReallyOnline) {
+                        // Starting auto-sync
+                        startAutoSync();
+                    } else {
+                        // Offline, skipping auto-sync
+                        // Force redirect to offline.html if we loaded index.php while offline
+                        if (window.location.pathname.includes('index.php')) {
+                            console.log('CAP: Redirecting to offline.html for better offline experience');
+                            setTimeout(() => {
+                                window.location.href = 'offline.html';
+                            }, 1000);
                         }
-                    });
+                    }
                     
                     // Check for updates
                     serviceWorkerRegistration.addEventListener('updatefound', () => {
@@ -928,7 +1127,18 @@ foreach ($posete as $poseta) {
                 } catch (error) {
                     console.error('CAP: Service Worker registration failed:', error);
                 }
-            });
+            }
+            
+            // Call registration function immediately if page already loaded
+            if (document.readyState === 'complete') {
+                // Page already loaded, registering SW immediately
+                registerServiceWorker();
+            } else {
+                // Waiting for page load to register SW
+                window.addEventListener('load', registerServiceWorker);
+            }
+        } else {
+            console.error('CAP: Service Worker not supported in this browser');
         }
         
         // Handle SW messages
@@ -1025,27 +1235,40 @@ foreach ($posete as $poseta) {
             
             // Find the visit card and update it
             const visitCards = document.querySelectorAll('.visit-card');
+            console.log('CAP: Found', visitCards.length, 'visit cards');
+            
             visitCards.forEach(card => {
-                const button = card.querySelector(`button[onclick*="pocniPosetu(${posetaId})"]`);
-                if (button) {
-                    // Change "Počni posetu" to "Završi posetu"
-                    button.onclick = null;
-                    button.setAttribute('onclick', `zavrsiPosetu(${posetaId})`);
-                    button.textContent = 'Završi posetu';
-                    button.className = 'btn-secondary text-sm px-3 py-1';
-                    
-                    // Update status badge
-                    const statusBadge = card.querySelector('.status-badge');
-                    if (statusBadge) {
-                        statusBadge.textContent = 'U toku';
-                        statusBadge.className = 'status-badge status-u_toku';
+                const cardVisitId = card.getAttribute('data-visit-id');
+                console.log('CAP: Checking card with visit ID:', cardVisitId, 'against', posetaId);
+                if (cardVisitId == posetaId) {
+                    const button = card.querySelector(`button[onclick*="pocniPosetu(${posetaId})"]`);
+                    console.log('CAP: Found button for visit', posetaId, ':', button);
+                    if (button) {
+                        // Change "Počni posetu" to "Završi posetu"
+                        button.onclick = null;
+                        button.setAttribute('onclick', `zavrsiPosetu(${posetaId})`);
+                        button.textContent = 'Završi posetu';
+                        button.className = 'btn-secondary text-sm px-3 py-1';
+                        console.log('CAP: Button updated to "Završi posetu"');
+                        
+                        // Update status badge
+                        const statusBadge = card.querySelector('.status-badge');
+                        if (statusBadge) {
+                            statusBadge.textContent = 'U toku (OFFLINE)';
+                            statusBadge.className = 'status-badge status-u_toku';
+                            console.log('CAP: Status badge updated to "U toku (OFFLINE)"');
+                        }
+                    } else {
+                        console.log('CAP: Button not found for visit', posetaId);
                     }
                 }
             });
             
             // Create and show active visit alert with timer
             const existingAlert = document.getElementById('activeVisitAlert');
+            console.log('CAP: Existing alert found:', existingAlert);
             if (!existingAlert) {
+                console.log('CAP: Creating new active visit alert');
                 const mainContent = document.querySelector('main');
                 const alertHTML = `
                     <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6 rounded-r-lg shadow-md" id="activeVisitAlert" style="background: linear-gradient(to right, #dbeafe, #eff6ff);">
@@ -1075,9 +1298,8 @@ foreach ($posete as $poseta) {
                     </div>
                 `;
                 
-                // Insert after the first child (header nav)
-                const firstChild = mainContent.children[0];
-                firstChild.insertAdjacentHTML('afterend', alertHTML);
+                // Insert at the beginning of main content
+                mainContent.insertAdjacentHTML('afterbegin', alertHTML);
                 
                 // Start timer
                 const startTime = Date.now();
@@ -1146,6 +1368,51 @@ foreach ($posete as $poseta) {
             }
         }
         
+        // Check for active visits stored locally and update UI
+        async function checkAndUpdateOfflineActiveVisits() {
+            try {
+                const visits = await OfflineStorage.getAllVisits();
+                const currentUserId = <?php echo $currentUser['id']; ?>;
+                
+                // Find active visits for current user
+                const activeVisits = visits.filter(v => 
+                    v.user_id === currentUserId && v.status === 'u_toku'
+                );
+                
+                console.log('CAP: Found', activeVisits.length, 'active offline visits');
+                
+                // Update UI for each active visit
+                activeVisits.forEach(visit => {
+                    const visitCards = document.querySelectorAll('.visit-card');
+                    visitCards.forEach(card => {
+                        const cardVisitId = card.getAttribute('data-visit-id');
+                        if (cardVisitId == visit.id) {
+                            // Find the button
+                            const button = card.querySelector('button[onclick*="pocniPosetu"]');
+                            if (button) {
+                                // Change to "Završi posetu"
+                                button.onclick = null;
+                                button.setAttribute('onclick', `zavrsiPosetu(${visit.id})`);
+                                button.textContent = 'Završi posetu';
+                                button.className = 'btn-secondary text-sm px-3 py-1';
+                                console.log('CAP: Updated button for offline active visit:', visit.id);
+                            }
+                            
+                            // Update status badge
+                            const statusBadge = card.querySelector('.status-badge');
+                            if (statusBadge && statusBadge.textContent !== 'U toku') {
+                                statusBadge.textContent = 'U toku (OFFLINE)';
+                                statusBadge.className = 'status-badge status-u_toku';
+                                console.log('CAP: Updated status badge for offline active visit:', visit.id);
+                            }
+                        }
+                    });
+                });
+            } catch (error) {
+                console.error('CAP: Error checking offline active visits:', error);
+            }
+        }
+        
         // Refresh visit data when online
         async function refreshVisitData() {
             if (!navigator.onLine) return;
@@ -1191,6 +1458,11 @@ foreach ($posete as $poseta) {
             // Cleanup old visits FIRST, before any other operations
             await cleanupOldVisits();
             
+            // Check for locally stored active visits when offline
+            if (!navigator.onLine) {
+                await checkAndUpdateOfflineActiveVisits();
+            }
+            
             // Wait a bit before first status check to allow Service Worker to register
             setTimeout(() => {
                 updateOfflineStatus();
@@ -1214,6 +1486,9 @@ foreach ($posete as $poseta) {
                     // Update UI to show online status
                     updateOfflineStatus();
                     
+                    // Sync offline data immediately
+                    await syncOfflineData();
+                    
                     // Force sync any pending offline actions
                     forceSyncIfNeeded();
                     
@@ -1236,7 +1511,7 @@ foreach ($posete as $poseta) {
                 }
             });
             
-            window.addEventListener('offline', () => {
+            window.addEventListener('offline', async () => {
                 console.log('CAP: Navigator says offline, stopping auto-sync');
                 isOnline = false;
                 reallyOnline = false;
@@ -1252,8 +1527,11 @@ foreach ($posete as $poseta) {
                 
                 // Auto-save ongoing visit state
                 <?php if ($aktivnaPoseta): ?>
-                autoSaveActiveVisit(<?php echo $aktivnaPoseta['id']; ?>);
+                await autoSaveActiveVisit(<?php echo $aktivnaPoseta['id']; ?>);
                 <?php endif; ?>
+                
+                // Update UI for offline active visits
+                await checkAndUpdateOfflineActiveVisits();
             });
         });
         
@@ -1295,6 +1573,9 @@ foreach ($posete as $poseta) {
             // Update UI
             updateOfflineStatus();
             
+            // Sync offline data immediately
+            await syncOfflineData();
+            
             // Sync any pending actions
             forceSyncIfNeeded();
             
@@ -1314,7 +1595,7 @@ foreach ($posete as $poseta) {
         // Test real internet connectivity (not just network interface)
         async function testRealConnectivity() {
             if (!navigator.onLine) {
-                console.log('CAP: Navigator says offline');
+                // Navigator offline
                 return false;
             }
             
@@ -1326,13 +1607,14 @@ foreach ($posete as $poseta) {
                 const response = await fetch('api/get_services.php?ping=1', {
                     method: 'HEAD',
                     cache: 'no-cache',
-                    signal: controller.signal
+                    signal: controller.signal,
+                    credentials: 'same-origin'
                 });
                 
                 clearTimeout(timeoutId);
                 
                 const isReallyOnline = response.ok;
-                console.log('CAP: Connectivity test result:', isReallyOnline);
+                // Connectivity test complete
                 return isReallyOnline;
                 
             } catch (error) {
@@ -1345,8 +1627,7 @@ foreach ($posete as $poseta) {
         
         // Start automatic data synchronization
         function startAutoSync() {
-            console.log('CAP: startAutoSync called, reallyOnline =', reallyOnline);
-            console.trace('CAP: startAutoSync call stack');
+            // Starting auto-sync
             
             // Don't start auto-sync if offline
             if (!reallyOnline) {
@@ -1358,23 +1639,31 @@ foreach ($posete as $poseta) {
                 clearInterval(autoSyncInterval);
             }
             
-            console.log('CAP: Starting auto-sync every 5 seconds');
+            // Starting auto-sync every 3 seconds
             
             // Initial sync only if online
             syncDataFromServer();
             
             // Set interval for continuous sync - only when really online
             autoSyncInterval = setInterval(async () => {
-                // Test real connectivity before each sync
-                const isOnline = await testRealConnectivity();
-                reallyOnline = isOnline;
-                
-                if (reallyOnline && !syncInProgress) {
-                    syncDataFromServer();
-                } else if (!reallyOnline) {
-                    console.log('CAP: Skipping sync - connectivity test failed');
+                // Skip connectivity test if we're already online to reduce overhead
+                if (navigator.onLine) {
+                    if (!syncInProgress) {
+                        // Auto-sync triggered
+                        syncDataFromServer();
+                    }
+                } else {
+                    // Test real connectivity only when navigator says offline
+                    const isOnline = await testRealConnectivity();
+                    reallyOnline = isOnline;
+                    
+                    if (reallyOnline && !syncInProgress) {
+                        syncDataFromServer();
+                    } else {
+                        console.log('CAP: Skipping sync - offline');
+                    }
                 }
-            }, 5000); // 5 seconds
+            }, 3000); // 3 seconds for more responsive updates
         }
         
         // Stop auto-sync
@@ -1395,37 +1684,35 @@ foreach ($posete as $poseta) {
         
         // Sync data from server using API - no page refresh
         async function syncDataFromServer() {
-            console.log('CAP: syncDataFromServer called, reallyOnline =', reallyOnline);
-            console.trace('CAP: syncDataFromServer call stack');
-            
-            // Skip sync if really offline
-            if (!reallyOnline) {
-                console.log('CAP: Skipping sync - really offline');
+            // Skip sync if offline (trust navigator.onLine for performance)
+            if (!navigator.onLine) {
+                console.log('CAP: Skipping sync - offline');
                 return;
             }
             
             // Prevent concurrent sync calls
             if (syncInProgress) {
-                console.log('CAP: Sync already in progress, skipping');
-                return;
+                return; // Don't log to reduce console noise
             }
             
             syncInProgress = true;
             
             
             try {
+                // Fetching visits from server
                 const response = await fetch('api/get_visits.php?t=' + Date.now(), {
                     method: 'GET',
                     headers: {
                         'Cache-Control': 'no-cache'
-                    }
+                    },
+                    credentials: 'same-origin'
                 });
                 
                 if (response.ok) {
                     const result = await response.json();
                     
                     if (result.success) {
-                        console.log('CAP: Got fresh data from server');
+                        // Got fresh data from server
                         
                         // Update UI with new data
                         await updateUIWithNewData(result.data);
@@ -1436,8 +1723,15 @@ foreach ($posete as $poseta) {
                             const existingVisits = await OfflineStorage.getTodaysVisits(<?php echo $currentUser['id']; ?>, '<?php echo date('Y-m-d'); ?>');
                             console.log('CAP: Found', existingVisits.length, 'existing local visits');
                             
-                            // Find local-only visits (not synced with server)
-                            const localOnlyVisits = existingVisits.filter(local => {
+                            // Find local visits that have been modified offline
+                            const localModifiedVisits = existingVisits.filter(local => {
+                                // Check if this is a local active visit (started offline)
+                                if (local.status === 'u_toku' && (!local.synced || local.synced === false)) {
+                                    console.log('CAP: Found local active visit:', local.id, 'status:', local.status);
+                                    return true;
+                                }
+                                
+                                // Check if this is a local-only visit not on server
                                 const existsOnServer = result.data.posete.some(server => 
                                     server.id && server.id === local.id
                                 );
@@ -1450,24 +1744,52 @@ foreach ($posete as $poseta) {
                                 return isLocalOnly;
                             });
                             
-                            console.log('CAP: Found', localOnlyVisits.length, 'local-only visits to preserve');
-                            if (localOnlyVisits.length > 0) {
-                                console.log('CAP: Local-only visit IDs:', localOnlyVisits.map(v => v.id));
+                            console.log('CAP: Found', localModifiedVisits.length, 'local modified visits to preserve');
+                            if (localModifiedVisits.length > 0) {
+                                console.log('CAP: Local modified visit IDs:', localModifiedVisits.map(v => ({id: v.id, status: v.status})));
                             }
                             
-                            // Store server visits (these will overwrite existing ones with same ID)
+                            // Store server visits but preserve local modifications
                             for (const poseta of result.data.posete) {
-                                await OfflineStorage.storeVisit({
-                                    ...poseta,
-                                    user_id: <?php echo $currentUser['id']; ?>,
-                                    date: '<?php echo date('Y-m-d'); ?>',
-                                    synced: true
+                                // Check if we have a local modification for this visit
+                                const localModified = localModifiedVisits.find(local => {
+                                    // Match by server ID or if local ID contains server ID
+                                    return (local.server_id && local.server_id === poseta.id) || 
+                                           (local.id && (local.id === poseta.id || String(local.id).includes(String(poseta.id))));
                                 });
+                                
+                                if (localModified && localModified.status === 'u_toku') {
+                                    // Preserve local active status - don't overwrite with server data
+                                    console.log('CAP: Preserving local active status for visit:', poseta.id);
+                                    await OfflineStorage.storeVisit({
+                                        ...poseta,
+                                        status: 'u_toku', // Keep local active status
+                                        vreme_pocetka: localModified.vreme_pocetka || poseta.vreme_pocetka,
+                                        user_id: <?php echo $currentUser['id']; ?>,
+                                        date: '<?php echo date('Y-m-d'); ?>',
+                                        synced: false // Mark as not synced so it will be synced to server
+                                    });
+                                } else {
+                                    // Store server data as-is
+                                    await OfflineStorage.storeVisit({
+                                        ...poseta,
+                                        user_id: <?php echo $currentUser['id']; ?>,
+                                        date: '<?php echo date('Y-m-d'); ?>',
+                                        synced: true
+                                    });
+                                }
                             }
                             
-                            // Restore local-only visits
+                            // Restore local-only visits that don't exist on server
+                            const localOnlyVisits = localModifiedVisits.filter(local => {
+                                return !result.data.posete.some(server => 
+                                    server.id === local.id || 
+                                    (local.server_id && local.server_id === server.id)
+                                );
+                            });
+                            
                             for (const localVisit of localOnlyVisits) {
-                                console.log('CAP: Preserving local visit:', localVisit.id);
+                                console.log('CAP: Preserving local-only visit:', localVisit.id);
                                 await OfflineStorage.storeVisit(localVisit);
                             }
                         }
@@ -1510,10 +1832,140 @@ foreach ($posete as $poseta) {
             }
         }
         
+        // Sync offline data TO server (complement to syncDataFromServer)
+        async function syncOfflineData() {
+            console.log('[' + new Date().toLocaleTimeString() + '] Starting offline data sync');
+            
+            try {
+                // First sync any visits that were started offline
+                if (typeof OfflineStorage !== 'undefined') {
+                    const existingVisits = await OfflineStorage.getTodaysVisits(
+                        <?php echo $currentUser['id']; ?>, 
+                        new Date().toISOString().split('T')[0]
+                    );
+                    
+                    // Find visits that are active locally but not synced
+                    const unsyncedActiveVisits = existingVisits.filter(visit => 
+                        visit.status === 'u_toku' && (!visit.synced || visit.synced === false)
+                    );
+                    
+                    console.log('CAP: Found', unsyncedActiveVisits.length, 'unsynced active visits');
+                    
+                    // Sync each active visit to server
+                    for (const visit of unsyncedActiveVisits) {
+                        const visitId = visit.server_id || visit.id;
+                        if (visitId && !String(visitId).startsWith('local_')) {
+                            console.log('CAP: Syncing active visit to server:', visitId);
+                            try {
+                                const response = await fetch('api/start_visit.php', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ poseta_id: visitId })
+                                });
+                                
+                                if (response.ok) {
+                                    const result = await response.json();
+                                    if (result.success) {
+                                        // Mark as synced in local storage
+                                        await OfflineStorage.storeVisit({
+                                            ...visit,
+                                            synced: true
+                                        });
+                                        console.log('CAP: Successfully synced active visit:', visitId);
+                                    }
+                                }
+                            } catch (error) {
+                                console.error('CAP: Failed to sync active visit:', visitId, error);
+                            }
+                        }
+                    }
+                }
+                
+                // Get offline actions from various storage mechanisms
+                let offlineActions = [];
+                
+                // Try IndexedDB first
+                if (typeof idb !== 'undefined') {
+                    try {
+                        const db = await idb.openDB('cap_offline', 1);
+                        const tx = db.transaction('actions', 'readonly');
+                        const actions = await tx.store.getAll();
+                        offlineActions = [...offlineActions, ...actions];
+                        console.log('[' + new Date().toLocaleTimeString() + '] Found ' + actions.length + ' actions in IndexedDB');
+                    } catch (e) {
+                        console.log('[' + new Date().toLocaleTimeString() + '] IndexedDB not available:', e.message);
+                    }
+                }
+                
+                // Fallback to localStorage
+                const localActions = JSON.parse(localStorage.getItem('pendingActions') || '[]');
+                if (localActions.length > 0) {
+                    offlineActions = [...offlineActions, ...localActions];
+                    console.log('[' + new Date().toLocaleTimeString() + '] Found ' + localActions.length + ' actions in localStorage');
+                }
+                
+                if (offlineActions.length === 0) {
+                    console.log('[' + new Date().toLocaleTimeString() + '] No offline actions to sync');
+                    showToast('Nema offline podataka za sinhronizaciju', 'info');
+                    return;
+                }
+                
+                // Send to server
+                const response = await fetch('api/sync_offline_data.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        actions: offlineActions
+                    })
+                });
+                
+                const result = await response.json();
+                console.log('[' + new Date().toLocaleTimeString() + '] Sync result:', result);
+                
+                if (result.success) {
+                    // Clear synced data from storage
+                    if (typeof idb !== 'undefined') {
+                        try {
+                            const db = await idb.openDB('cap_offline', 1);
+                            const tx = db.transaction('actions', 'readwrite');
+                            await tx.store.clear();
+                        } catch (e) {
+                            console.log('[' + new Date().toLocaleTimeString() + '] Could not clear IndexedDB');
+                        }
+                    }
+                    
+                    localStorage.removeItem('pendingActions');
+                    
+                    showToast(`Sinhronizovano ${result.synced} od ${result.total} akcija`, 'success');
+                    
+                    if (result.errors && result.errors.length > 0) {
+                        console.warn('[' + new Date().toLocaleTimeString() + '] Sync errors:', result.errors);
+                    }
+                    
+                    // Refresh data from server to get updated state
+                    await syncDataFromServer();
+                    
+                } else {
+                    showToast('Greška pri sinhronizaciji: ' + result.message, 'error');
+                }
+                
+            } catch (error) {
+                console.error('[' + new Date().toLocaleTimeString() + '] Sync error:', error);
+                showToast('Greška pri sinhronizaciji offline podataka', 'error');
+            }
+        }
+        
         // Update visit cards in the UI
         function updateVisitCards(posete) {
             const container = document.querySelector('.space-y-3');
-            if (!container) return;
+            // Updating visit cards
+            if (!container) {
+                console.error('CAP: Visit container not found!');
+                return;
+            }
             
             if (!posete || posete.length === 0) {
                 container.innerHTML = `
@@ -1606,8 +2058,8 @@ foreach ($posete as $poseta) {
                 `;
                 
                 const main = document.querySelector('main');
-                const firstChild = main.children[0];
-                firstChild.insertAdjacentHTML('afterend', alertHTML);
+                // Insert at the very beginning of main content
+                main.insertAdjacentHTML('afterbegin', alertHTML);
                 
                 // Start timer
                 const startTime = new Date(aktivnaPoseta.datum_posete + ' ' + aktivnaPoseta.vreme_pocetka).getTime();
