@@ -1533,6 +1533,33 @@ foreach ($posete as $poseta) {
                 // Update UI for offline active visits
                 await checkAndUpdateOfflineActiveVisits();
             });
+
+            // Handle app coming back from background/hidden state
+            document.addEventListener('visibilitychange', async function() {
+                console.log('CAP: Visibility changed, hidden:', document.hidden);
+                
+                if (!document.hidden) {
+                    // App is coming back to foreground
+                    console.log('CAP: App returned to foreground, checking session and refreshing data');
+                    
+                    await checkSessionAndRefresh();
+                    
+                    // Trigger sync if we have pending actions
+                    if (navigator.onLine) {
+                        await syncPendingActions();
+                    }
+                    
+                    // Update connection status
+                    updateOfflineStatus();
+                }
+            });
+
+            // Additional check when window gets focus (for desktop/browser scenarios)
+            window.addEventListener('focus', async function() {
+                console.log('CAP: Window gained focus, checking connectivity');
+                await checkConnectivity();
+                updateOfflineStatus();
+            });
         });
         
         // ===== CONNECTIVITY TESTING =====
@@ -1620,6 +1647,160 @@ foreach ($posete as $poseta) {
             } catch (error) {
                 console.log('CAP: Connectivity test failed:', error.name);
                 return false;
+            }
+        }
+
+        // ===== SESSION AND DATA REFRESH =====
+        
+        // Check session validity and refresh data when app returns to foreground
+        async function checkSessionAndRefresh() {
+            try {
+                console.log('CAP: Checking session validity and refreshing data');
+                
+                // First check if we have connectivity
+                const isConnected = await testRealConnectivity();
+                if (!isConnected) {
+                    console.log('CAP: No connectivity, skipping session check');
+                    return;
+                }
+                
+                // Test session validity by making a simple API call
+                const response = await fetch('api/get_services.php?session_check=1', {
+                    method: 'GET',
+                    cache: 'no-cache',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+                
+                if (response.status === 401 || response.status === 403) {
+                    // Session expired - redirect to login
+                    console.log('CAP: Session expired, redirecting to login');
+                    showToast('Sesija je istekla. Potrebno je da se ponovo ulogujete.', 'error');
+                    setTimeout(() => {
+                        window.location.href = 'login.php';
+                    }, 2000);
+                    return;
+                }
+                
+                if (response.ok) {
+                    console.log('CAP: Session valid, refreshing data');
+                    
+                    // Refresh visits data
+                    await refreshVisitsData();
+                    
+                    // Sync any pending offline actions
+                    await syncPendingActions();
+                    
+                    showToast('Podaci su ažurirani', 'success');
+                } else {
+                    console.log('CAP: Session check failed with status:', response.status);
+                }
+                
+            } catch (error) {
+                console.error('CAP: Error checking session:', error);
+                // Don't show error toast as this might be normal connectivity issue
+            }
+        }
+        
+        // Refresh visits data from server
+        async function refreshVisitsData() {
+            try {
+                // Reload the page to get fresh data - simplest approach
+                // Alternative: implement AJAX data refresh
+                if (confirm('Ažurirati podatke? Stranica će biti ponovo učitana.')) {
+                    window.location.reload();
+                }
+            } catch (error) {
+                console.error('CAP: Error refreshing visits data:', error);
+            }
+        }
+        
+        // Simple connectivity check for focus events
+        async function checkConnectivity() {
+            try {
+                console.log('CAP: Checking connectivity on focus');
+                
+                const isConnected = await testRealConnectivity();
+                if (isConnected !== reallyOnline) {
+                    // Connectivity status changed
+                    reallyOnline = isConnected;
+                    isOnline = isConnected;
+                    
+                    if (isConnected) {
+                        console.log('CAP: Connectivity restored on focus');
+                        showToast('Internet konekcija je vraćena', 'success');
+                        
+                        // Start auto-sync
+                        startAutoSync();
+                        
+                        // Trigger immediate sync
+                        await syncPendingActions();
+                    } else {
+                        console.log('CAP: Still offline on focus');
+                        stopAutoSync();
+                    }
+                }
+            } catch (error) {
+                console.error('CAP: Error checking connectivity:', error);
+            }
+        }
+        
+        // Sync pending offline actions
+        async function syncPendingActions() {
+            try {
+                if (!navigator.onLine) {
+                    console.log('CAP: Cannot sync - offline');
+                    return;
+                }
+                
+                console.log('CAP: Syncing pending actions');
+                
+                // Check if OfflineStorage is available
+                if (typeof OfflineStorage === 'undefined') {
+                    console.log('CAP: OfflineStorage not available for sync');
+                    return;
+                }
+                
+                // Get pending items from IndexedDB
+                const pendingItems = await OfflineStorage.getPendingSyncItems();
+                console.log('CAP: Found pending sync items:', pendingItems.length);
+                
+                if (pendingItems.length === 0) {
+                    return;
+                }
+                
+                // Try to sync each pending item
+                for (const item of pendingItems) {
+                    try {
+                        console.log('CAP: Syncing item:', item);
+                        
+                        const response = await fetch(item.url, {
+                            method: item.method || 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            body: JSON.stringify(item.data)
+                        });
+                        
+                        if (response.ok) {
+                            // Mark as synced and remove from queue
+                            await OfflineStorage.removeFromSyncQueue(item.id);
+                            console.log('CAP: Successfully synced item:', item.id);
+                        } else {
+                            console.log('CAP: Failed to sync item:', item.id, 'Status:', response.status);
+                        }
+                        
+                    } catch (syncError) {
+                        console.error('CAP: Error syncing item:', item.id, syncError);
+                    }
+                }
+                
+                showToast('Offline podaci su sinhronizovani', 'success');
+                
+            } catch (error) {
+                console.error('CAP: Error in syncPendingActions:', error);
             }
         }
         
